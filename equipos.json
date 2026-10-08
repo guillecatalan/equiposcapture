@@ -1,0 +1,33 @@
+{
+  "titulo": "Explorador de equipos AT",
+  "equipos": [
+    {
+      "id": "EQ-001",
+      "nombre": "Equipo de prueba",
+      "categoria": "Modelo de ejemplo",
+      "descripcion": "Reemplaza estos datos por los de un equipo real.",
+      "modelo": "model.glb",
+      "vista": { "yaw": -0.6, "pitch": 0.25, "dist": 4.4 },
+      "ficha": {
+        "Subestación": "Dato de ejemplo",
+        "Tensión nominal": "110 kV",
+        "Año de fabricación": "2015",
+        "Estado": "Operativo"
+      },
+      "documentos": [
+        { "nombre": "Ficha técnica (ejemplo)", "url": "docs/ficha-eq-001.pdf" }
+      ],
+      "partes": {
+        "seccion_01": {
+          "nombre": "Parte de ejemplo 1",
+          "descripcion": "Con un GLB de piezas separadas, la clave es el nombre del nodo en Blender.",
+          "ficha": { "Material": "Dato de ejemplo" }
+        },
+        "seccion_02": {
+          "nombre": "Parte de ejemplo 2",
+          "ficha": { "Última inspección": "2026-01-15" }
+        }
+      }
+    }
+  ]
+}

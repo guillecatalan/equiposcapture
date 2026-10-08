@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explorador 3D de equipos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0c1218;
+    --panel: rgba(14, 21, 29, 0.84);
+    --line: #26343f;
+    --text: #e6eef3;
+    --muted: #8b9ba7;
+    --accent: #4fd1e5;
+    --accent-ink: #062830;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text);
+    font-family: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 14px; overflow: hidden; }
+  #cam { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1);
+    opacity: 0; transition: opacity .3s; pointer-events: none; }
+  #cam.on { opacity: .38; }
+  #gl, #hands { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #gl { touch-action: none; cursor: grab; }
+  #gl.dragging { cursor: grabbing; }
+  #hands { pointer-events: none; }
+
+  .panel { position: fixed; background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+  button, input, select { font: inherit; color: inherit; }
+  button, select { background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 7px 12px; cursor: pointer; }
+  select { background: #101922; width: 100%; margin-top: 8px; }
+  button:hover, select:hover { border-color: var(--accent); }
+  button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  button.primary:disabled { opacity: .6; cursor: progress; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+
+  #title { top: 16px; left: 16px; padding: 12px 16px; width: 270px; }
+  #title h1 { margin: 0; font-size: 16px; font-weight: 600; }
+  #title p { margin: 2px 0 0; color: var(--muted); overflow-wrap: anywhere; }
+  #equipoSel[hidden] { display: none; }
+
+  #info { top: 16px; right: 16px; width: 290px; max-height: calc(100vh - 110px); overflow: auto; padding: 14px 16px; }
+  #info h2 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+  #info p { margin: 0; color: var(--muted); line-height: 1.45; }
+  #info dl { margin: 10px 0 0; display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); gap: 5px 14px; }
+  #info dl:empty { display: none; }
+  #info dt { color: var(--muted); }
+  #info dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+  #info a { color: var(--accent); }
+  #docs { margin-top: 10px; display: grid; gap: 4px; }
+  #docs:empty { display: none; }
+  #clearSel { margin-top: 12px; width: 100%; }
+  #partsWrap { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+  #partsWrap[hidden] { display: none; }
+  #partsWrap h3 { margin: 0 0 6px; font-size: 13px; font-weight: 500; color: var(--muted); }
+  #partList { list-style: none; margin: 0; padding: 0; max-height: 170px; overflow: auto; display: grid; gap: 2px; }
+  #partList button { width: 100%; text-align: left; border-color: transparent; padding: 5px 8px; }
+  #partList button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+
+  #bar { bottom: 16px; left: 50%; transform: translateX(-50%); padding: 10px 14px; display: flex; flex-wrap: wrap;
+    gap: 10px 18px; align-items: center; justify-content: center; max-width: calc(100vw - 24px); }
+  #bar label { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); }
+  #bar input[type=range] { width: 150px; accent-color: var(--accent); }
+  #bar input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; }
+
+  #help { bottom: 86px; left: 16px; padding: 10px 14px; max-width: 300px; }
+  #help summary { cursor: pointer; font-weight: 500; }
+  #help ul { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; color: var(--muted); line-height: 1.4; }
+  #help b { color: var(--text); font-weight: 500; }
+
+  #status { position: fixed; left: 50%; top: 18px; transform: translateX(-50%); padding: 8px 14px; border-radius: 8px;
+    background: var(--panel); border: 1px solid var(--line); color: var(--muted); max-width: min(560px, calc(100vw - 32px)); text-align: center; z-index: 5; }
+  #status[hidden] { display: none; }
+  #status.error { color: #ffb4a8; border-color: #6b3a33; }
+  #loader { position: fixed; inset: 0; display: grid; place-items: center; background: var(--bg); transition: opacity .35s; z-index: 4; }
+  #loader.done { opacity: 0; pointer-events: none; }
+  #loader div { width: 220px; text-align: center; color: var(--muted); }
+  #loader .track { height: 3px; background: var(--line); margin-top: 12px; border-radius: 2px; overflow: hidden; }
+  #loader .fill { height: 100%; width: 0; background: var(--accent); }
+
+  @media (max-width: 760px) {
+    #info { top: auto; bottom: 150px; right: 12px; width: 240px; max-height: 38vh; }
+    #title { top: 12px; left: 12px; width: 230px; }
+    #help { display: none; }
+    #status { top: 120px; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<video id="cam" playsinline muted></video>
+<canvas id="gl"></canvas>
+<canvas id="hands"></canvas>
+
+<div id="title" class="panel">
+  <h1 id="appTitle">Explorador 3D</h1>
+  <p id="modelName">Cargando</p>
+  <select id="equipoSel" aria-label="Equipo" hidden></select>
+</div>
+
+<aside id="info" class="panel" aria-live="polite">
+  <h2 id="infoTitle">Sin selección</h2>
+  <p id="infoSub"></p>
+  <dl id="infoData"></dl>
+  <div id="docs"></div>
+  <div id="partsWrap" hidden>
+    <h3>Partes del equipo</h3>
+    <ul id="partList"></ul>
+  </div>
+  <button id="clearSel" hidden>Quitar selección</button>
+</aside>
+
+<details id="help" class="panel" open>
+  <summary>Gestos con la cámara</summary>
+  <ul>
+    <li><b>Girar:</b> pellizca con una mano (pulgar e índice) y mueve.</li>
+    <li><b>Zoom:</b> pellizca con las dos manos y sepáralas o júntalas.</li>
+    <li><b>Explotar:</b> abre las dos manos con los dedos extendidos y sepáralas. Júntalas para volver a armar.</li>
+    <li><b>Seleccionar:</b> apunta con el índice hasta resaltar una parte y haz un pellizco corto.</li>
+  </ul>
+</details>
+
+<div id="bar" class="panel">
+  <button id="camBtn" class="primary">Activar cámara y manos</button>
+  <div class="seg" role="group" aria-label="Modo de vista">
+    <button id="modeTex" aria-pressed="true">Textura</button>
+    <button id="modePts" aria-pressed="false">Puntos</button>
+  </div>
+  <label>Explosión <input id="explode" type="range" min="0" max="100" value="0"></label>
+  <label><input id="showCam" type="checkbox" checked> Ver mi cámara de fondo</label>
+  <button id="reset">Reiniciar vista</button>
+</div>
+
+<div id="status" hidden></div>
+<div id="loader"><div>Cargando modelo<div class="track"><div class="fill" id="fill"></div></div></div></div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+/* ---------- Configuración ---------- */
+const PARAMS = new URLSearchParams(location.search);
+const CATALOG_URL = PARAMS.get('catalogo') || 'equipos.json';   // lista de equipos
+const NUM_SECTIONS = 24;      // secciones automáticas si el GLB es una sola malla
+const EXPLODE_FACTOR = 1.6;   // cuánto se separan las partes
+const MAX_POINTS = 90000;     // tope de puntos en el modo "Puntos"
+const MP_VERSION = '0.10.14';
+const MP_BUNDLE = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/vision_bundle.mjs`;
+const MP_WASM = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VERSION}/wasm`;
+const MP_MODEL = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
+
+/* ---------- Elementos de la página ---------- */
+const $ = id => document.getElementById(id);
+const glCanvas = $('gl'), handsCanvas = $('hands'), video = $('cam'), hctx = handsCanvas.getContext('2d');
+const statusEl = $('status');
+function setStatus(msg, isError = false) {
+  statusEl.hidden = !msg; statusEl.textContent = msg || ''; statusEl.classList.toggle('error', isError);
+}
+
+/* ---------- Escena ---------- */
+const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+const scene = new THREE.Scene();
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+const key = new THREE.DirectionalLight(0xffffff, 1.6); key.position.set(3, 4, 5); scene.add(key);
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+const pivot = new THREE.Group(); scene.add(pivot);
+
+const VIEW0 = { yaw: -0.6, pitch: 0.25, dist: 4.4 };
+const view = { ...VIEW0 };
+const MIN_DIST = 1.8, MAX_DIST = 9;
+
+/* Uniforms compartidos entre el material de textura y el de puntos */
+const U = {
+  uExplode: { value: 0 }, uSel: { value: -1 }, uHover: { value: -1 },
+  uAccent: { value: new THREE.Color(0x4fd1e5) },
+  uSize: { value: 0.011 }, uScale: { value: 800 }, map: { value: null }, uUseMap: { value: 0 },
+};
+
+/* ---------- Estado del equipo cargado ---------- */
+let catalog = null, current = null;        // catálogo y equipo actual
+let parts = [];                            // { id, center, offset, radius, tris }
+let autoSections = false;                  // true si el GLB era una sola malla
+let meshGroup = null, pointsObj = null;
+let selected = -1, pointsMode = false, loadId = 0;
+
+/* ---------- Agrupar una malla única en secciones (k-means) ---------- */
+function kmeans(pts, n, k) {
+  const c = new Float32Array(k * 3), assign = new Int32Array(n);
+  const mean = [0, 0, 0];
+  for (let i = 0; i < n; i++) for (let a = 0; a < 3; a++) mean[a] += pts[i * 3 + a] / n;
+  const minD = new Float32Array(n).fill(Infinity);
+  let first = 0, best = -1;
+  for (let i = 0; i < n; i++) {
+    const d = (pts[i*3]-mean[0])**2 + (pts[i*3+1]-mean[1])**2 + (pts[i*3+2]-mean[2])**2;
+    if (d > best) { best = d; first = i; }
+  }
+  let pick = first;
+  for (let s = 0; s < k; s++) {
+    for (let a = 0; a < 3; a++) c[s*3+a] = pts[pick*3+a];
+    best = -1;
+    for (let i = 0; i < n; i++) {
+      const d = (pts[i*3]-c[s*3])**2 + (pts[i*3+1]-c[s*3+1])**2 + (pts[i*3+2]-c[s*3+2])**2;
+      if (d < minD[i]) minD[i] = d;
+      if (minD[i] > best) { best = minD[i]; pick = i; }
+    }
+  }
+  for (let it = 0; it < 8; it++) {
+    const sum = new Float64Array(k * 3), cnt = new Int32Array(k);
+    for (let i = 0; i < n; i++) {
+      let bi = 0, bd = Infinity;
+      for (let s = 0; s < k; s++) {
+        const d = (pts[i*3]-c[s*3])**2 + (pts[i*3+1]-c[s*3+1])**2 + (pts[i*3+2]-c[s*3+2])**2;
+        if (d < bd) { bd = d; bi = s; }
+      }
+      assign[i] = bi; cnt[bi]++;
+      for (let a = 0; a < 3; a++) sum[bi*3+a] += pts[i*3+a];
+    }
+    for (let s = 0; s < k; s++) if (cnt[s]) for (let a = 0; a < 3; a++) c[s*3+a] = sum[s*3+a] / cnt[s];
+  }
+  return assign;
+}
+
+/* ---------- Materiales ---------- */
+const patched = new WeakSet();
+function patchStandard(mat) {
+  if (patched.has(mat)) return; patched.add(mat);
+  mat.onBeforeCompile = shader => {
+    Object.assign(shader.uniforms, { uExplode: U.uExplode, uSel: U.uSel, uHover: U.uHover, uAccent: U.uAccent });
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec3 aOffset;\nattribute float aCluster;\nuniform float uExplode;\nvarying float vCluster;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCluster = aCluster;\ntransformed += aOffset * uExplode;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vCluster;\nuniform float uSel;\nuniform float uHover;\nuniform vec3 uAccent;')
+      .replace('#include <dithering_fragment>', `#include <dithering_fragment>
+        bool isSel = abs(vCluster - uSel) < 0.5;
+        bool isHov = abs(vCluster - uHover) < 0.5;
+        if (uSel >= 0.0 && !isSel) gl_FragColor.rgb *= 0.28;
+        if (isSel) gl_FragColor.rgb = mix(gl_FragColor.rgb, uAccent, 0.22);
+        if (isHov && !isSel) gl_FragColor.rgb += uAccent * 0.18;`);
+  };
+  mat.customProgramCacheKey = () => 'parts-v2';
+  mat.side = THREE.DoubleSide;
+}
+
+function makePointsMaterial() {
+  return new THREE.ShaderMaterial({
+    uniforms: U,
+    vertexShader: `
+      attribute vec3 aOffset; attribute float aCluster; attribute vec3 aColor;
+      uniform float uExplode, uSize, uScale;
+      varying float vCluster; varying vec2 vUv; varying vec3 vColor;
+      void main() {
+        vUv = uv; vCluster = aCluster; vColor = aColor;
+        vec4 mv = modelViewMatrix * vec4(position + aOffset * uExplode, 1.0);
+        gl_PointSize = max(1.5, uSize * uScale / -mv.z);
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: `
+      uniform sampler2D map; uniform float uSel, uHover, uUseMap; uniform vec3 uAccent;
+      varying float vCluster; varying vec2 vUv; varying vec3 vColor;
+      void main() {
+        vec2 c = gl_PointCoord - 0.5; if (dot(c, c) > 0.25) discard;
+        vec3 base = uUseMap > 0.5 ? texture2D(map, vUv).rgb : vColor;
+        vec3 col = mix(vec3(0.8, 0.93, 1.0), base, 0.5) * 1.3;
+        bool isSel = abs(vCluster - uSel) < 0.5;
+        bool isHov = abs(vCluster - uHover) < 0.5;
+        if (uSel >= 0.0 && !isSel) col *= 0.3;
+        if (isSel) col = mix(col, uAccent, 0.55);
+        if (isHov && !isSel) col += uAccent * 0.3;
+        gl_FragColor = vec4(col, 1.0);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`,
+  });
+}
+
+/* ---------- Construir las partes a partir del GLB ---------- */
+function worldGeometry(mesh) {
+  const g = mesh.geometry.clone(); g.applyMatrix4(mesh.matrixWorld); return g;
+}
+function partName(mesh, i) {
+  let n = mesh.name; if (!n && mesh.parent && mesh.parent.type !== 'Scene' && mesh.parent.type !== 'Group') n = mesh.parent.name;
+  return n || `parte_${String(i + 1).padStart(2, '0')}`;
+}
+const triCount = g => (g.index ? g.index.count : g.attributes.position.count) / 3;
+
+function buildParts(gltf) {
+  gltf.scene.updateMatrixWorld(true);
+  const meshes = [];
+  gltf.scene.traverse(o => { if (o.isMesh && o.geometry && o.geometry.attributes.position) meshes.push(o); });
+  if (!meshes.length) throw new Error('El GLB no contiene mallas.');
+  return meshes.length >= 2 ? buildRealParts(meshes) : buildAutoSections(meshes[0]);
+}
+
+/* A) El GLB trae varias mallas: cada malla es una parte, con el nombre del nodo. */
+function buildRealParts(meshes) {
+  const geos = meshes.map(worldGeometry);
+  const box = new THREE.Box3();
+  geos.forEach(g => { g.computeBoundingBox(); box.union(g.boundingBox); });
+  const ctr = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+  const s = 2 / Math.max(size.x, size.y, size.z);
+  const M = new THREE.Matrix4().makeScale(s, s, s).multiply(new THREE.Matrix4().makeTranslation(-ctr.x, -ctr.y, -ctr.z));
+
+  const group = new THREE.Group(), outParts = [];
+  const pp = [], pu = [], po = [], pc = [], pcol = [];
+  const totalVerts = geos.reduce((a, g) => a + g.attributes.position.count, 0);
+  const stride = Math.max(1, Math.ceil(totalVerts / MAX_POINTS));
+  const seen = new Map();
+
+  meshes.forEach((m, i) => {
+    const g = geos[i]; g.applyMatrix4(M); g.computeBoundingBox();
+    const bb = g.boundingBox, center = bb.getCenter(new THREE.Vector3()), sz = bb.getSize(new THREE.Vector3());
+    const offset = center.clone().multiplyScalar(EXPLODE_FACTOR);
+    let id = partName(m, i);
+    if (seen.has(id)) { const k = seen.get(id) + 1; seen.set(id, k); id = `${id}_${k}`; } else seen.set(id, 1);
+    outParts.push({ id, center, offset, radius: Math.max(sz.length() * 0.5, 0.1), tris: triCount(g) });
+
+    const n = g.attributes.position.count;
+    const ao = new Float32Array(n * 3), ac = new Float32Array(n).fill(i);
+    for (let v = 0; v < n; v++) { ao[v*3] = offset.x; ao[v*3+1] = offset.y; ao[v*3+2] = offset.z; }
+    g.setAttribute('aOffset', new THREE.BufferAttribute(ao, 3));
+    g.setAttribute('aCluster', new THREE.BufferAttribute(ac, 1));
+    g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 6);
+
+    const mats = Array.isArray(m.material) ? m.material : [m.material];
+    mats.forEach(patchStandard);
+    const mesh = new THREE.Mesh(g, m.material); mesh.frustumCulled = false;
+    group.add(mesh);
+
+    const col = (mats[0] && mats[0].color) ? mats[0].color : new THREE.Color(0.7, 0.7, 0.7);
+    const P = g.attributes.position, UV = g.attributes.uv;
+    for (let v = 0; v < n; v += stride) {
+      pp.push(P.getX(v), P.getY(v), P.getZ(v)); pu.push(UV ? UV.getX(v) : 0, UV ? UV.getY(v) : 0);
+      po.push(offset.x, offset.y, offset.z); pc.push(i); pcol.push(col.r, col.g, col.b);
+    }
+  });
+
+  const pg = new THREE.BufferGeometry();
+  pg.setAttribute('position', new THREE.Float32BufferAttribute(pp, 3)); pg.setAttribute('uv', new THREE.Float32BufferAttribute(pu, 2));
+  pg.setAttribute('aOffset', new THREE.Float32BufferAttribute(po, 3)); pg.setAttribute('aCluster', new THREE.Float32BufferAttribute(pc, 1));
+  pg.setAttribute('aColor', new THREE.Float32BufferAttribute(pcol, 3));
+  pg.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 6);
+  return { group, points: new THREE.Points(pg, makePointsMaterial()), parts: outParts, auto: false, map: null };
+}
+
+/* B) El GLB es una sola malla fusionada: se crean secciones automáticas. */
+function buildAutoSections(mesh) {
+  const src = worldGeometry(mesh), mat = mesh.material;
+  const pos = src.attributes.position, nor = src.attributes.normal, uv = src.attributes.uv;
+  const idx = src.index ? src.index.array : null;
+  const T = idx ? idx.length / 3 : pos.count / 3;
+  const vi = t => idx ? idx[t] : t;
+
+  src.computeBoundingBox();
+  const bb = src.boundingBox, ctr = bb.getCenter(new THREE.Vector3()), size = bb.getSize(new THREE.Vector3());
+  const s = 2 / Math.max(size.x, size.y, size.z);
+  const P = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    P[i*3] = (pos.getX(i) - ctr.x) * s; P[i*3+1] = (pos.getY(i) - ctr.y) * s; P[i*3+2] = (pos.getZ(i) - ctr.z) * s;
+  }
+  const cent = new Float32Array(T * 3);
+  for (let t = 0; t < T; t++) for (let v = 0; v < 3; v++) for (let a = 0; a < 3; a++) cent[t*3+a] += P[vi(t*3+v)*3+a] / 3;
+  const K = Math.min(NUM_SECTIONS, T), assign = kmeans(cent, T, K);
+
+  const secs = Array.from({ length: K }, (_, i) => ({ id: `seccion_${String(i + 1).padStart(2, '0')}`, center: new THREE.Vector3(), offset: new THREE.Vector3(), radius: 0, tris: 0 }));
+  for (let t = 0; t < T; t++) { const sc = secs[assign[t]]; sc.tris++; sc.center.x += cent[t*3]; sc.center.y += cent[t*3+1]; sc.center.z += cent[t*3+2]; }
+  secs.forEach(sc => { if (sc.tris) sc.center.divideScalar(sc.tris); sc.offset.copy(sc.center).multiplyScalar(EXPLODE_FACTOR); });
+  const tmp = new THREE.Vector3();
+  for (let t = 0; t < T; t++) { const sc = secs[assign[t]]; tmp.set(cent[t*3], cent[t*3+1], cent[t*3+2]); sc.radius = Math.max(sc.radius, tmp.distanceTo(sc.center)); }
+  secs.forEach(sc => { sc.radius = Math.max(sc.radius * 0.8, 0.12); });
+
+  const gp = new Float32Array(T*9), gn = new Float32Array(T*9), gu = new Float32Array(T*6), go = new Float32Array(T*9), gc = new Float32Array(T*3);
+  const pp = new Float32Array(T*3), pu = new Float32Array(T*2), po = new Float32Array(T*3), pc = new Float32Array(T), pcol = new Float32Array(T*3);
+  for (let t = 0; t < T; t++) {
+    const sc = secs[assign[t]]; let uu = 0, vv = 0;
+    for (let v = 0; v < 3; v++) {
+      const i = vi(t*3+v), o = t*3+v;
+      for (let a = 0; a < 3; a++) gp[o*3+a] = P[i*3+a];
+      if (nor) { gn[o*3] = nor.getX(i); gn[o*3+1] = nor.getY(i); gn[o*3+2] = nor.getZ(i); }
+      if (uv) { gu[o*2] = uv.getX(i); gu[o*2+1] = uv.getY(i); uu += uv.getX(i) / 3; vv += uv.getY(i) / 3; }
+      go[o*3] = sc.offset.x; go[o*3+1] = sc.offset.y; go[o*3+2] = sc.offset.z; gc[o] = assign[t];
+    }
+    pp[t*3] = cent[t*3]; pp[t*3+1] = cent[t*3+1]; pp[t*3+2] = cent[t*3+2];
+    pu[t*2] = uu; pu[t*2+1] = vv; po[t*3] = sc.offset.x; po[t*3+1] = sc.offset.y; po[t*3+2] = sc.offset.z; pc[t] = assign[t];
+  }
+  const mg = new THREE.BufferGeometry();
+  mg.setAttribute('position', new THREE.BufferAttribute(gp, 3)); mg.setAttribute('normal', new THREE.BufferAttribute(gn, 3));
+  mg.setAttribute('uv', new THREE.BufferAttribute(gu, 2)); mg.setAttribute('aOffset', new THREE.BufferAttribute(go, 3));
+  mg.setAttribute('aCluster', new THREE.BufferAttribute(gc, 1));
+  const pg = new THREE.BufferGeometry();
+  pg.setAttribute('position', new THREE.BufferAttribute(pp, 3)); pg.setAttribute('uv', new THREE.BufferAttribute(pu, 2));
+  pg.setAttribute('aOffset', new THREE.BufferAttribute(po, 3)); pg.setAttribute('aCluster', new THREE.BufferAttribute(pc, 1));
+  pg.setAttribute('aColor', new THREE.BufferAttribute(pcol, 3));
+  mg.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 6); pg.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 6);
+
+  patchStandard(Array.isArray(mat) ? mat[0] : mat);
+  const mesh2 = new THREE.Mesh(mg, Array.isArray(mat) ? mat[0] : mat); mesh2.frustumCulled = false;
+  const group = new THREE.Group(); group.add(mesh2);
+  return { group, points: new THREE.Points(pg, makePointsMaterial()), parts: secs, auto: true, map: (Array.isArray(mat) ? mat[0] : mat).map || null };
+}
+
+/* ---------- Carga de un equipo ---------- */
+function loadGLB(url, onProgress) {
+  return new Promise((resolve, reject) => {
+    new GLTFLoader().load(url, resolve, e => { if (e.total) onProgress(e.loaded / e.total); }, reject);
+  });
+}
+function clearModel() {
+  pivot.traverse(o => {
+    if (o.geometry) o.geometry.dispose();
+    const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+    mats.forEach(m => { Object.values(m).forEach(v => { if (v && v.isTexture) v.dispose(); }); m.dispose(); });
+  });
+  pivot.clear(); meshGroup = null; pointsObj = null; parts = [];
+}
+async function loadEquipo(n) {
+  const eq = catalog.equipos[n], id = ++loadId;
+  $('loader').classList.remove('done'); $('fill').style.width = '0%'; setStatus('');
+  $('modelName').textContent = String(eq.modelo || '').split('/').pop() || 'Sin archivo de modelo';
+  try {
+    if (!eq.modelo) throw new Error('El equipo no tiene el campo "modelo".');
+    const gltf = await loadGLB(eq.modelo, p => { if (id === loadId) $('fill').style.width = (p * 100) + '%'; });
+    if (id !== loadId) return;
+    const built = buildParts(gltf);
+    clearModel();
+    current = eq; parts = built.parts; autoSections = built.auto;
+    meshGroup = built.group; pointsObj = built.points;
+    U.map.value = built.map; U.uUseMap.value = built.map ? 1 : 0;
+    pivot.add(meshGroup, pointsObj); pointsObj.frustumCulled = false;
+    setMode(pointsMode);
+    Object.assign(view, VIEW0, eq.vista || {});
+    explodeTarget = 0; $('explode').value = 0;
+    buildPartList(); select(-1);
+  } catch (err) {
+    if (id !== loadId) return;
+    console.error(err);
+    setStatus(`No se pudo cargar "${eq.modelo}". Si abriste index.html con doble clic, sírvelo desde un servidor local o desde GitHub Pages. Detalle: ${err.message || err}`, true);
+  } finally {
+    if (id === loadId) $('loader').classList.add('done');
+  }
+}
+
+/* ---------- Panel de información ---------- */
+function safeUrl(u) {
+  try { const x = new URL(u, location.href); return (x.protocol === 'http:' || x.protocol === 'https:') ? x.href : null; } catch { return null; }
+}
+function fillDl(dl, obj) {
+  dl.replaceChildren();
+  Object.entries(obj || {}).forEach(([k, v]) => {
+    const dt = document.createElement('dt'), dd = document.createElement('dd');
+    dt.textContent = k; dd.textContent = String(v); dl.append(dt, dd);
+  });
+}
+function fillDocs(list) {
+  const box = $('docs'); box.replaceChildren();
+  (Array.isArray(list) ? list : []).forEach(d => {
+    const href = safeUrl(d && d.url); if (!href) return;
+    const a = document.createElement('a'); a.href = href; a.target = '_blank'; a.rel = 'noopener noreferrer';
+    a.textContent = d.nombre || d.url; box.append(a);
+  });
+}
+const prettyName = id => String(id).replace(/[_-]+/g, ' ').trim();
+function renderInfo() {
+  const eq = current || {};
+  if (selected >= 0 && parts[selected]) {
+    const p = parts[selected], pi = (eq.partes && eq.partes[p.id]) || {};
+    $('infoTitle').textContent = pi.nombre || prettyName(p.id);
+    $('infoSub').textContent = pi.descripcion || (autoSections
+      ? 'Sección creada automáticamente al agrupar triángulos cercanos: el modelo es una sola malla.' : '');
+    fillDl($('infoData'), { ...(pi.ficha || {}), ...(autoSections ? { 'Triángulos': p.tris.toLocaleString('es-CL') } : {}) });
+    fillDocs(pi.documentos);
+    $('clearSel').hidden = false;
+  } else {
+    $('infoTitle').textContent = eq.nombre || eq.id || 'Sin equipo';
+    $('infoSub').textContent = [eq.categoria, eq.descripcion].filter(Boolean).join('. ') || 'Selecciona una parte para ver su ficha.';
+    fillDl($('infoData'), eq.ficha);
+    fillDocs(eq.documentos);
+    $('clearSel').hidden = true;
+  }
+  document.querySelectorAll('#partList button').forEach(b => b.setAttribute('aria-pressed', String(Number(b.dataset.i) === selected)));
+}
+function buildPartList() {
+  const ul = $('partList'); ul.replaceChildren();
+  const show = !autoSections && parts.length > 0 && parts.length <= 80;
+  $('partsWrap').hidden = !show;
+  if (!show) return;
+  parts.forEach((p, i) => {
+    const li = document.createElement('li'), b = document.createElement('button');
+    const pi = (current.partes && current.partes[p.id]) || {};
+    b.textContent = pi.nombre || prettyName(p.id); b.dataset.i = i; b.setAttribute('aria-pressed', 'false');
+    b.onclick = () => select(selected === i ? -1 : i);
+    li.append(b); ul.append(li);
+  });
+}
+function select(i) { selected = i; U.uSel.value = i; renderInfo(); }
+$('clearSel').onclick = () => select(-1);
+
+/* ---------- Tamaño de pantalla ---------- */
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+  handsCanvas.width = w; handsCanvas.height = h;
+  U.uScale.value = (h * renderer.getPixelRatio()) / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
+}
+addEventListener('resize', resize); resize();
+
+/* ---------- Selección por puntero ---------- */
+const raycaster = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+const wp = new THREE.Vector3();
+function pickAt(px, py) {
+  if (!parts.length) return -1;
+  ndc.set(px / innerWidth * 2 - 1, -(py / innerHeight) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  let best = -1, bestScore = Infinity;
+  parts.forEach((sc, i) => {
+    wp.copy(sc.center).addScaledVector(sc.offset, U.uExplode.value);
+    pivot.localToWorld(wp);
+    const d = Math.sqrt(raycaster.ray.distanceSqToPoint(wp));
+    if (d < sc.radius) { const score = d / sc.radius; if (score < bestScore) { bestScore = score; best = i; } }
+  });
+  return best;
+}
+
+/* ---------- Controles: mouse ---------- */
+let drag = null, handCursor = null;
+glCanvas.addEventListener('pointerdown', e => {
+  glCanvas.setPointerCapture(e.pointerId);
+  drag = { x: e.clientX, y: e.clientY, moved: 0 }; glCanvas.classList.add('dragging');
+});
+glCanvas.addEventListener('pointermove', e => {
+  if (drag) {
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    drag.x = e.clientX; drag.y = e.clientY; drag.moved += Math.abs(dx) + Math.abs(dy);
+    view.yaw += dx * 0.008; view.pitch = THREE.MathUtils.clamp(view.pitch + dy * 0.008, -1.5, 1.5);
+  } else if (!handCursor) {
+    U.uHover.value = pickAt(e.clientX, e.clientY);
+  }
+});
+glCanvas.addEventListener('pointerup', e => {
+  if (drag && drag.moved < 5) select(pickAt(e.clientX, e.clientY));
+  drag = null; glCanvas.classList.remove('dragging');
+});
+glCanvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  view.dist = THREE.MathUtils.clamp(view.dist * Math.exp(e.deltaY * 0.001), MIN_DIST, MAX_DIST);
+}, { passive: false });
+
+/* ---------- Controles de la barra ---------- */
+let explodeTarget = 0;
+$('explode').addEventListener('input', e => { explodeTarget = e.target.value / 100; });
+function setMode(points) {
+  pointsMode = points;
+  if (meshGroup) { meshGroup.visible = !points; pointsObj.visible = points; }
+  $('modeTex').setAttribute('aria-pressed', String(!points)); $('modePts').setAttribute('aria-pressed', String(points));
+}
+$('modeTex').onclick = () => setMode(false);
+$('modePts').onclick = () => setMode(true);
+$('showCam').onchange = e => video.classList.toggle('on', Boolean(e.target.checked && video.srcObject));
+$('reset').onclick = () => { Object.assign(view, VIEW0, (current && current.vista) || {}); explodeTarget = 0; $('explode').value = 0; select(-1); };
+$('equipoSel').onchange = e => loadEquipo(Number(e.target.value));
+
+/* ---------- Detección de manos ---------- */
+let landmarker = null, handsOn = false, lastVideoTime = -1;
+const smooth = { explode: 0 };
+const HAND_LINES = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+
+async function startHands() {
+  const btn = $('camBtn'); btn.disabled = true; btn.textContent = 'Iniciando';
+  try {
+    setStatus('Pidiendo acceso a la cámara');
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'user' }, audio: false });
+    video.srcObject = stream; await video.play();
+    video.classList.toggle('on', $('showCam').checked);
+    setStatus('Cargando el detector de manos');
+    const { HandLandmarker, FilesetResolver } = await import(MP_BUNDLE);
+    const files = await FilesetResolver.forVisionTasks(MP_WASM);
+    const make = delegate => HandLandmarker.createFromOptions(files, {
+      baseOptions: { modelAssetPath: MP_MODEL, delegate }, runningMode: 'VIDEO', numHands: 2,
+      minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.5, minTrackingConfidence: 0.5,
+    });
+    try { landmarker = await make('GPU'); } catch { landmarker = await make('CPU'); }
+    handsOn = true; btn.textContent = 'Cámara activa'; setStatus('');
+  } catch (err) {
+    console.error(err);
+    btn.disabled = false; btn.textContent = 'Activar cámara y manos';
+    const denied = err && (err.name === 'NotAllowedError' || err.name === 'SecurityError');
+    setStatus(denied
+      ? 'No hay permiso para usar la cámara. Permítelo en el navegador y vuelve a intentar.'
+      : 'No se pudo iniciar la cámara o el detector de manos. La cámara solo funciona en HTTPS o en localhost.', true);
+  }
+}
+$('camBtn').onclick = startHands;
+
+/* coordenadas de la mano en píxeles de pantalla (compensa object-fit: cover y el espejo) */
+function toScreen(lm) {
+  const W = innerWidth, H = innerHeight, vw = video.videoWidth || 640, vh = video.videoHeight || 480;
+  const sc = Math.max(W / vw, H / vh), ox = (W - vw * sc) / 2, oy = (H - vh * sc) / 2;
+  return { x: ox + (1 - lm.x) * vw * sc, y: oy + lm.y * vh * sc };
+}
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+function analyze(lms) {
+  const p = lms.map(toScreen);
+  const size = dist(p[0], p[9]) || 1;
+  const ext = [[8,6],[12,10],[16,14],[20,18]].map(([t, j]) => dist(p[0], p[t]) > dist(p[0], p[j]) * 1.15);
+  return {
+    p, pinchRatio: dist(p[4], p[8]) / size,
+    open: ext.every(Boolean), pointing: ext[0] && !ext[1] && !ext[2] && !ext[3],
+    anchor: { x: (p[4].x + p[8].x) / 2, y: (p[4].y + p[8].y) / 2 }, wrist: p[0], tip: p[8],
+  };
+}
+
+const hs = [{ pinched: false }, { pinched: false }];
+let g = { mode: 'none', prev: null, dist0: 0, handDist0: 0, tapStart: 0, tapMoved: 0, tapPos: null };
+
+function updateGestures(res) {
+  hctx.clearRect(0, 0, innerWidth, innerHeight);
+  const hands = (res.landmarks || []).map(analyze).sort((a, b) => a.wrist.x - b.wrist.x);
+
+  hctx.lineWidth = 2; hctx.strokeStyle = 'rgba(79,209,229,.85)'; hctx.fillStyle = '#e6eef3';
+  hands.forEach(h => {
+    hctx.beginPath(); HAND_LINES.forEach(([a, b]) => { hctx.moveTo(h.p[a].x, h.p[a].y); hctx.lineTo(h.p[b].x, h.p[b].y); }); hctx.stroke();
+    h.p.forEach(pt => { hctx.beginPath(); hctx.arc(pt.x, pt.y, 2.5, 0, 6.3); hctx.fill(); });
+  });
+
+  hands.forEach((h, i) => {
+    const s = hs[i] || (hs[i] = { pinched: false });
+    s.pinched = s.pinched ? h.pinchRatio < 0.5 : h.pinchRatio < 0.32;
+    h.pinched = s.pinched;
+  });
+  for (let i = hands.length; i < 2; i++) hs[i].pinched = false;
+
+  const pinched = hands.filter(h => h.pinched);
+  handCursor = null;
+
+  if (hands.length === 2 && pinched.length === 2) {
+    const d = dist(hands[0].anchor, hands[1].anchor);
+    if (g.mode !== 'zoom') g = { ...g, mode: 'zoom', dist0: view.dist, handDist0: d };
+    view.dist = THREE.MathUtils.clamp(g.dist0 * g.handDist0 / Math.max(d, 40), MIN_DIST, MAX_DIST);
+    drawBadge(hands, 'Zoom');
+  } else if (hands.length === 2 && hands.every(h => h.open)) {
+    const d = dist(hands[0].wrist, hands[1].wrist) / Math.min(innerWidth, innerHeight);
+    const t = THREE.MathUtils.clamp((d - 0.25) / 0.6, 0, 1);
+    smooth.explode += (t - smooth.explode) * 0.25;
+    explodeTarget = smooth.explode; $('explode').value = Math.round(explodeTarget * 100);
+    g.mode = 'explode'; g.prev = null;
+    drawBadge(hands, 'Explotar');
+  } else if (pinched.length === 1) {
+    const h = pinched[0];
+    if (g.mode !== 'rotate') g = { ...g, mode: 'rotate', prev: h.anchor, tapStart: performance.now(), tapMoved: 0, tapPos: { ...h.anchor } };
+    const sc = 1 / Math.min(innerWidth, innerHeight);
+    const dx = (h.anchor.x - g.prev.x) * sc, dy = (h.anchor.y - g.prev.y) * sc;
+    g.prev = h.anchor; g.tapMoved += Math.abs(dx) + Math.abs(dy);
+    view.yaw += dx * 5; view.pitch = THREE.MathUtils.clamp(view.pitch + dy * 4, -1.5, 1.5);
+    drawBadge(hands, 'Girar');
+  } else {
+    if (g.mode === 'rotate' && performance.now() - g.tapStart < 450 && g.tapMoved < 0.04) select(pickAt(g.tapPos.x, g.tapPos.y));
+    g.mode = 'none'; g.prev = null;
+    const h = hands.find(x => x.pointing) || hands[0];
+    if (h) {
+      handCursor = h.tip;
+      U.uHover.value = pickAt(h.tip.x, h.tip.y);
+      hctx.strokeStyle = '#4fd1e5'; hctx.lineWidth = 2; hctx.beginPath(); hctx.arc(h.tip.x, h.tip.y, 14, 0, 6.3); hctx.stroke();
+    } else U.uHover.value = -1;
+  }
+}
+function drawBadge(hands, text) {
+  const x = hands.reduce((a, h) => a + h.wrist.x, 0) / hands.length, y = Math.min(...hands.map(h => h.wrist.y)) - 24;
+  hctx.font = '500 14px "Instrument Sans", system-ui, sans-serif'; hctx.textAlign = 'center';
+  hctx.fillStyle = '#4fd1e5'; hctx.fillText(text, x, y);
+}
+
+/* ---------- Bucle de dibujo ---------- */
+let explodeNow = 0;
+function frame() {
+  requestAnimationFrame(frame);
+  if (handsOn && landmarker && video.readyState >= 2 && video.currentTime !== lastVideoTime) {
+    lastVideoTime = video.currentTime;
+    try { updateGestures(landmarker.detectForVideo(video, performance.now())); } catch (e) { console.error(e); }
+  }
+  explodeNow += (explodeTarget - explodeNow) * 0.15;
+  U.uExplode.value = explodeNow;
+  pivot.rotation.set(view.pitch, view.yaw, 0, 'YXZ');
+  camera.position.set(0, 0, view.dist);
+  renderer.render(scene, camera);
+}
+frame();
+
+/* ---------- Inicio: leer el catálogo y cargar el primer equipo ---------- */
+async function init() {
+  const direct = PARAMS.get('model');
+  if (direct) {
+    catalog = { equipos: [{ id: 'modelo', nombre: direct.split('/').pop(), modelo: direct }] };
+  } else {
+    try {
+      const r = await fetch(CATALOG_URL, { cache: 'no-cache' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      catalog = await r.json();
+    } catch (err) {
+      if (PARAMS.get('catalogo')) {
+        $('loader').classList.add('done');
+        setStatus(`No se pudo leer el catálogo "${CATALOG_URL}": ${err.message}. Revisa que el JSON sea válido.`, true); return;
+      }
+      catalog = { equipos: [{ id: 'modelo', nombre: 'model.glb', modelo: 'model.glb' }] };   // sin catálogo: modelo suelto
+    }
+  }
+  if (!catalog || !Array.isArray(catalog.equipos) || !catalog.equipos.length) {
+    $('loader').classList.add('done'); setStatus('El catálogo no tiene la lista "equipos" o está vacía.', true); return;
+  }
+  if (catalog.titulo) { $('appTitle').textContent = catalog.titulo; document.title = catalog.titulo; }
+  const sel = $('equipoSel');
+  catalog.equipos.forEach((eq, i) => { const o = document.createElement('option'); o.value = i; o.textContent = eq.nombre || eq.id || `Equipo ${i + 1}`; sel.append(o); });
+  sel.hidden = catalog.equipos.length < 2;
+  const wanted = catalog.equipos.findIndex(eq => eq.id && eq.id === PARAMS.get('equipo'));
+  const start = wanted >= 0 ? wanted : 0; sel.value = start;
+  loadEquipo(start);
+}
+init();
+</script>
+</body>
+</html>
