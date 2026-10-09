@@ -14,6 +14,30 @@
         "Año de fabricación": "2015",
         "Estado": "Operativo"
       },
+      {
+  "titulo": "Explorador 3D de equipos AT",
+  "equipos": [
+    {
+      "id": "EQ-002",
+      "nombre": "curiosity",
+      "categoria": "Equipo espacial",
+      "descripcion": "Modelo existente",
+      "modelo": "model/curiosity.glb",
+      "ficha": {
+        "Estado": "Operativo"
+      }
+    },
+    {
+      "id": "EQ-003",
+      "nombre": "Transformador de poder",
+      "categoria": "Transformación",
+      "descripcion": "Visualización 3D del transformador",
+      "modelo": "model/trafo.glb",
+      "ficha": {
+        "Tipo": "Transformador",
+        "Tensión": "Por completar"
+      }
+    },
       "documentos": [
         { "nombre": "Ficha técnica (ejemplo)", "url": "docs/ficha-eq-001.pdf" }
       ],
